@@ -99,13 +99,6 @@ void MainWindow::wireConnections()
     connect(ui->preset2,  &QPushButton::clicked, this, [this]{ setSpeed(2.0); });
     connect(ui->preset4,  &QPushButton::clicked, this, [this]{ setSpeed(4.0); });
     connect(ui->resetButton, &QPushButton::clicked, this, [this]{ setSpeed(1.0); });
-
-    connect(ui->actionQuit, &QAction::triggered, this, &QWidget::close);
-    connect(ui->actionAbout, &QAction::triggered, this, [this]{
-        QMessageBox::about(this, tr("About"),
-            tr("Speedhack — single-player game timing tool.\n"
-               "Hooks Win32 timing APIs. Detectable by anti-cheat."));
-    });
 }
 
 // ---------------------------------------------------------------------------
