@@ -1,14 +1,14 @@
-// harness.cpp  —  proves the DLL works WITHOUT the injector.
+// harness.cpp  —  proves ALL four hooks at once, without an injector.
 //
-// LoadLibrary loads speedhack.dll into THIS process, so the GetTickCount
-// calls below get hooked. Watch the delta between prints: it starts at
-// ~500ms (1x), then accelerates after SetSpeed(4.0) — and crucially the
-// printed value keeps climbing smoothly, never jumps backward. That smooth
-// transition is the continuity anchoring doing its job.
+// LoadLibrary loads speedhack.dll into this process, hooking every timing API.
+// Each column below should advance ~500 per real half-second before the call,
+// then ~2000 after SetSpeed(4.0). Watch that they all move together and that
+// none jumps backward at the transition.
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <cstdio>
+#include <mmsystem.h>
 
 using SetSpeed_t = void(*)(double);
 
@@ -26,19 +26,36 @@ int main()
         return 1;
     }
 
-    Sleep(200);  // give the DLL's init thread a moment to install the hook
+    Sleep(200);  // let the DLL's init thread install the hooks
 
-    DWORD prev = GetTickCount();
-    for (int i = 0; i < 20; ++i) {
-        const DWORD now = GetTickCount();
-        printf("tick=%-10lu  delta=%lu\n", now, now - prev);
-        prev = now;
+    LARGE_INTEGER freq, qpcPrev;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&qpcPrev);
+    DWORD     gtcPrev   = GetTickCount();
+    ULONGLONG gtc64Prev = GetTickCount64();
+    DWORD     tgtPrev   = timeGetTime();
+
+    printf("%-12s %-12s %-12s %-12s\n", "GTC", "GTC64", "timeGetTime", "QPC(ms)");
+
+    for (int i = 0; i < 18; ++i) {
+        const DWORD     gtc   = GetTickCount();
+        const ULONGLONG gtc64 = GetTickCount64();
+        const DWORD     tgt   = timeGetTime();
+        LARGE_INTEGER   qpc;  QueryPerformanceCounter(&qpc);
+
+        const double qpcMs =
+            double(qpc.QuadPart - qpcPrev.QuadPart) * 1000.0 / double(freq.QuadPart);
+
+        printf("%-12lu %-12llu %-12lu %-12.0f\n",
+               gtc - gtcPrev, gtc64 - gtc64Prev, tgt - tgtPrev, qpcMs);
+
+        gtcPrev = gtc; gtc64Prev = gtc64; tgtPrev = tgt; qpcPrev = qpc;
 
         if (i == 5) {
             printf("--- SetSpeed(4.0) ---\n");
             SetSpeed(4.0);
         }
-        Sleep(500);  // REAL half-second every iteration
+        Sleep(500);  // a REAL half-second every iteration
     }
 
     FreeLibrary(dll);
