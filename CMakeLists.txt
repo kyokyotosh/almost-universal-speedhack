@@ -68,3 +68,32 @@ install(TARGETS almost-universal-speedhack
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(almost-universal-speedhack)
 endif()
+
+# ---------------------------------------------------------------------------
+# Speedhack payload DLL + test harness  (Windows-only, no Qt)
+# ---------------------------------------------------------------------------
+if(WIN32)
+    include(FetchContent)
+    FetchContent_Declare(
+        minhook
+        GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+        GIT_TAG        master
+    )
+    FetchContent_MakeAvailable(minhook)
+
+    add_library(speedhack SHARED speedhack.cpp)
+    target_link_libraries(speedhack PRIVATE minhook)
+    set_target_properties(speedhack PROPERTIES PREFIX "")        # libspeedhack.dll -> speedhack.dll
+    target_link_options(speedhack PRIVATE -static)    
+
+    add_executable(harness harness.cpp)
+    target_link_options(harness PRIVATE -static)
+
+    # Guarantee the DLL is built before the harness, and lands beside it.
+    add_dependencies(harness speedhack)
+    add_custom_command(TARGET harness POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:speedhack>
+            $<TARGET_FILE_DIR:harness>
+        COMMENT "Copying speedhack.dll next to harness.exe")
+endif()
