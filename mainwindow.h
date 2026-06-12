@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include "speedhack_ipc.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -41,7 +42,9 @@ private:
     void setInjectedState(bool injected);
     void log(const QString &msg);
 
+    shipc::ControlWriter m_control;
     Ui::MainWindow *ui;
+
 
     quint32 m_targetPid = 0;
     bool    m_injected  = false;

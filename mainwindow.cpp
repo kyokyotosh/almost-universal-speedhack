@@ -187,7 +187,15 @@ void MainWindow::onInject()
     //   the row's Arch column. Wrap every HANDLE in RAII.
     // TODO: open the DLL's named shared-memory section for live control.
 
+    if (m_control.open(m_targetPid, /*retryMs=*/0))
+        log(QStringLiteral("Control channel connected."));
+    else
+        log(QStringLiteral("Control channel failed."));
+
+
     setInjectedState(true);
+
+
     applySpeedToTarget(m_speed);   // push current value once connected
 }
 
@@ -197,6 +205,9 @@ void MainWindow::onEject()
 
     // TODO: signal the DLL to restore real timing (multiplier = 1.0) and
     //   FreeLibrary it, or just reset to 1.0 and detach the IPC handle.
+
+    m_control.setSpeed(1.0);   // restore real time before detaching
+    m_control.close();
 
     setInjectedState(false);
 }
@@ -256,12 +267,8 @@ void MainWindow::cyclePreset()
 
 void MainWindow::applySpeedToTarget(double m)
 {
-    if (!m_injected)
-        return;
-
-    // TODO: write {multiplier=m, version++} into the shared-memory section.
-    //   The DLL re-anchors its fake clock on the version bump.
-    log(QStringLiteral("-> target speed %1×").arg(m, 0, 'f', 2));
+    if (m_control.valid())
+        m_control.setSpeed(m);
 }
 
 // ---------------------------------------------------------------------------

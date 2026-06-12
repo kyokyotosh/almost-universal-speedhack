@@ -1,16 +1,16 @@
-// harness.cpp  —  proves ALL four hooks at once, without an injector.
+// harness.cpp  —  proves the hooks AND the real shared-memory control path.
 //
-// LoadLibrary loads speedhack.dll into this process, hooking every timing API.
-// Each column below should advance ~500 per real half-second before the call,
-// then ~2000 after SetSpeed(4.0). Watch that they all move together and that
-// none jumps backward at the transition.
+// LoadLibrary loads speedhack.dll into this process (so every timing API is
+// hooked AND the DLL creates a control section for our PID). We then open that
+// section as a ControlWriter — exactly what the Qt app does — and push 4.0.
+// No SetSpeed export anymore: this is the production control path.
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <mmsystem.h>   // timeGetTime
 #include <cstdio>
-#include <mmsystem.h>
 
-using SetSpeed_t = void(*)(double);
+#include "speedhack_ipc.h"
 
 int main()
 {
@@ -20,13 +20,12 @@ int main()
         return 1;
     }
 
-    auto SetSpeed = reinterpret_cast<SetSpeed_t>(GetProcAddress(dll, "SetSpeed"));
-    if (!SetSpeed) {
-        printf("SetSpeed export not found\n");
+    // Open the control section the DLL created for THIS process.
+    shipc::ControlWriter ctl;
+    if (!ctl.open(GetCurrentProcessId())) {
+        printf("control channel open failed\n");
         return 1;
     }
-
-    Sleep(200);  // let the DLL's init thread install the hooks
 
     LARGE_INTEGER freq, qpcPrev;
     QueryPerformanceFrequency(&freq);
@@ -52,8 +51,8 @@ int main()
         gtcPrev = gtc; gtc64Prev = gtc64; tgtPrev = tgt; qpcPrev = qpc;
 
         if (i == 5) {
-            printf("--- SetSpeed(4.0) ---\n");
-            SetSpeed(4.0);
+            printf("--- ctl.setSpeed(4.0) via shared memory ---\n");
+            ctl.setSpeed(4.0);
         }
         Sleep(500);  // a REAL half-second every iteration
     }
