@@ -1,11 +1,13 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "injector.h"
 
 #include <QSignalBlocker>
 #include <QMessageBox>
 #include <QDateTime>
 #include <QTableWidgetItem>
 #include <QHeaderView>
+#include <QCoreApplication>
 
 // Keep windows.h from polluting the global namespace / clashing with Qt.
 #define WIN32_LEAN_AND_MEAN
@@ -53,6 +55,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->processTable->setColumnWidth(0, 70);   // PID
     ui->processTable->setColumnWidth(1, 280);  // Process
+    
+    Injector::enableDebugPrivilege();
 
     wireConnections();
     registerHotkeys();
@@ -179,24 +183,32 @@ void MainWindow::onInject()
     if (m_targetPid == 0)
         return;
 
+    // Refuse a bitness mismatch up front — clearer than LoadLibrary failing later.
+    const QString ownArch = (sizeof(void*) == 8) ? "x64" : "x86";
+    const int row = ui->processTable->selectionModel()->selectedRows().first().row();
+    const QString targetArch = ui->processTable->item(row, 2)->text();
+    if (targetArch != ownArch && targetArch != "?") {
+        log(QStringLiteral("Bitness mismatch: target is %1, injector is %2. "
+                           "Build a %1 version to inject this game.")
+                .arg(targetArch, ownArch));
+        return;
+    }
+
+    const QString dll = QCoreApplication::applicationDirPath() + "/speedhack.dll";
     log(QStringLiteral("Injecting into PID %1…").arg(m_targetPid));
 
-    // TODO: Injector::inject(m_targetPid, dllPathForArch);
-    //   OpenProcess -> VirtualAllocEx -> WriteProcessMemory(dll path)
-    //   -> CreateRemoteThread(LoadLibraryW). Pick the x86/x64 DLL to match
-    //   the row's Arch column. Wrap every HANDLE in RAII.
-    // TODO: open the DLL's named shared-memory section for live control.
+    InjectResult r = Injector::inject(m_targetPid, dll.toStdWString());
+    log(QString::fromStdWString(r.message));
+    if (!r.ok)
+        return;                                   // stay un-injected on failure
 
-    if (m_control.open(m_targetPid, /*retryMs=*/0))
+    if (m_control.open(m_targetPid))
         log(QStringLiteral("Control channel connected."));
     else
-        log(QStringLiteral("Control channel failed."));
-
+        log(QStringLiteral("Injected, but control channel failed."));
 
     setInjectedState(true);
-
-
-    applySpeedToTarget(m_speed);   // push current value once connected
+    applySpeedToTarget(m_speed);
 }
 
 void MainWindow::onEject()
