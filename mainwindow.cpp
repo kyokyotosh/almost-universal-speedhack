@@ -9,11 +9,31 @@
 #include <QHeaderView>
 #include <QCoreApplication>
 
+#include <cmath>
+#include <algorithm> 
+
 // Keep windows.h from polluting the global namespace / clashing with Qt.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 #include <tlhelp32.h>
+
+// ---- speed mapping: slider position <-> multiplier (logarithmic) ----------
+static constexpr double kMinMult = 0.1;
+static constexpr double kMaxMult = 500.0;
+
+static double sliderToMult(int pos)        // pos in [0..1000]
+{
+    const double t = pos / 1000.0;
+    return kMinMult * std::pow(kMaxMult / kMinMult, t);
+}
+
+static int multToSlider(double mult)
+{
+    mult = std::clamp(mult, kMinMult, kMaxMult);
+    const double t = std::log(mult / kMinMult) / std::log(kMaxMult / kMinMult);
+    return static_cast<int>(std::lround(t * 1000.0));
+}
 
 // ---------------------------------------------------------------------------
 // Free helper: best-effort architecture of a process ("x86" / "x64" / "?").
@@ -55,7 +75,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->processTable->setColumnWidth(0, 70);   // PID
     ui->processTable->setColumnWidth(1, 280);  // Process
-    
+
     Injector::enableDebugPrivilege();
 
     wireConnections();
@@ -238,7 +258,7 @@ void MainWindow::onEnableToggled(bool enabled)
 
 void MainWindow::onSliderChanged(int value)
 {
-    setSpeed(value / 100.0);
+    setSpeed(sliderToMult(value));
 }
 
 void MainWindow::onSpinChanged(double value)
@@ -249,21 +269,17 @@ void MainWindow::onSpinChanged(double value)
 void MainWindow::setSpeed(double multiplier)
 {
     m_speed = multiplier;
-
-    // Block signals so slider<->spin don't ping-pong into infinite recursion.
     {
         QSignalBlocker bSlider(ui->speedSlider);
         QSignalBlocker bSpin(ui->speedSpin);
-        ui->speedSlider->setValue(static_cast<int>(multiplier * 100.0));
+        ui->speedSlider->setValue(multToSlider(multiplier));   // was multiplier*100
         ui->speedSpin->setValue(multiplier);
     }
-
-    ui->activeSpeedLabel->setText(QStringLiteral("%1×")
-                                      .arg(multiplier, 0, 'f', 2));
-
+    ui->activeSpeedLabel->setText(QStringLiteral("%1×").arg(multiplier, 0, 'f', 2));
     if (ui->enableCheck->isChecked())
         applySpeedToTarget(multiplier);
 }
+
 
 void MainWindow::cyclePreset()
 {
