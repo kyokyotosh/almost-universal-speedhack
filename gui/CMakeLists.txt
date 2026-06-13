@@ -16,3 +16,6 @@ target_link_libraries(almost-universal-speedhack PRIVATE
     shared_ipc)
 
 set_target_properties(almost-universal-speedhack PROPERTIES WIN32_EXECUTABLE TRUE)
+
+target_compile_definitions(almost-universal-speedhack PRIVATE
+    _WIN32_WINNT=0x0A00)
