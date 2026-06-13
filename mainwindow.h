@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QHash>
+#include <QIcon>
 #include "speedhack_ipc.h"
 
 QT_BEGIN_NAMESPACE
@@ -43,6 +45,7 @@ private:
     void log(const QString &msg);
 
     shipc::ControlWriter m_control;
+    QHash<QString, QIcon> m_iconCache;
     Ui::MainWindow *ui;
 
 

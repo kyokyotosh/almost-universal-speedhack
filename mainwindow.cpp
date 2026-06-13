@@ -8,6 +8,11 @@
 #include <QTableWidgetItem>
 #include <QHeaderView>
 #include <QCoreApplication>
+#include <QIcon>
+#include <QPixmap>
+#include <QImage>
+
+#include <shellapi.h>
 
 #include <cmath>
 #include <algorithm> 
@@ -64,6 +69,35 @@ static QString processArch(DWORD pid)
     return arch;
 }
 
+// PID -> full path of the backing executable.
+static QString processPath(DWORD pid)
+{
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h) return {};
+    wchar_t buf[MAX_PATH];
+    DWORD sz = MAX_PATH;
+    QString path;
+    if (QueryFullProcessImageNameW(h, 0, buf, &sz))
+        path = QString::fromWCharArray(buf, sz);
+    CloseHandle(h);
+    return path;
+}
+
+// Shell icon for an exe path (matches what Explorer shows). Empty QIcon on failure.
+static QIcon extractIcon(const QString& path)
+{
+    if (path.isEmpty()) return {};
+    SHFILEINFOW info{};
+    if (SHGetFileInfoW(reinterpret_cast<const wchar_t*>(path.utf16()), 0,
+                       &info, sizeof(info), SHGFI_ICON | SHGFI_SMALLICON)
+        && info.hIcon) {
+        QImage img = QImage::fromHICON(info.hIcon);   // Qt 6.5+ built-in
+        DestroyIcon(info.hIcon);
+        return QIcon(QPixmap::fromImage(img));
+    }
+    return {};
+}
+
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
@@ -75,6 +109,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->processTable->setColumnWidth(0, 70);   // PID
     ui->processTable->setColumnWidth(1, 280);  // Process
+    ui->processTable->setIconSize(QSize(16, 16));
 
     Injector::enableDebugPrivilege();
 
@@ -148,6 +183,18 @@ void MainWindow::refreshProcessList()
 
             auto *pidItem  = new QTableWidgetItem(QString::number(pe.th32ProcessID));
             auto *nameItem = new QTableWidgetItem(QString::fromWCharArray(pe.szExeFile));
+
+            const QString path = processPath(pe.th32ProcessID);
+            QIcon icon;
+            auto it = m_iconCache.constFind(path);          // already seen this exe?
+            if (it != m_iconCache.constEnd()) {
+                icon = it.value();
+            } else {
+                icon = extractIcon(path);
+                m_iconCache.insert(path, icon);             // cache even empties
+            }
+            nameItem->setIcon(icon);
+
             auto *archItem = new QTableWidgetItem(processArch(pe.th32ProcessID));
 
             // Stash the real PID on the row so selection doesn't depend on parsing text.
